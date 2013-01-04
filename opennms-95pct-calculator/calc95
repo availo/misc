@@ -2,10 +2,10 @@
 
 /**
  * Groovy script that allows polling 95pct data from a set of snmpinterface ids (from OpenNMS' pgsql database)
- * Allows optional creation of png graphs of the requested period.
+ * Allows optional creation of png graphs of the requested period, or dumping the data from all jrobin files.
  * 
  * @author Brynjar Eide <brynjar@availo.no>
- * @version 1.0, 20120814
+ * @version 1.1, 20130104
  */
 import org.jrobin.core.*;
 import org.jrobin.graph.*;
@@ -20,14 +20,21 @@ import groovy.sql.Sql;
 /*
  * Configuration options
  */
-// Where to save the optional png files
-def pngroot = '/var/www/calc95/png/'; // Remember / as a suffix
+// Where to save the optional png files (Used when '-g <filename>' parameter is specified)
+def pngroot = '/tmp/calc95/png/'; // Remember / as a suffix
+// OpenNMS' jrobin root folder
 def jrbroot = '/usr/share/opennms/share/rrd/snmp/'; // Remember / as a suffix
-def useSubfolders = true;
+def useMonthlySubfolders = true; // Whether to create a new folder every month. The alternative is to put the period (YYYY-MM) in the filename.
+
+/*
+ * YYYY-MM formatted string, used for (optional) graph folder or filename.
+ * It will also be prefixed in front of the actual 95pct usage when printing this.
+ */
+def dateTextFormat = 'yyyy-MM'; // Default: yyyy-MM.
 
 // Database settings
-def dbuser = 'calc95';   // Username used when connecting to the database
-def dbpass = 'secret';   // Password used when connecting to the database
+def dbuser = 'calc95';    // Username used when connecting to the database
+def dbpass = 'secret';    // Password used when connecting to the database
 def dbname = 'opennms';   // Name of the database
 def dbhost = 'localhost'; // Hostname of the database
 def dbport = 5432;
@@ -44,9 +51,11 @@ def defaultMonth = new SimpleDateFormat("MM").format(cal.getTime());
 def cli = new CliBuilder(usage:'calc95 [options] <snmp interface id> [,<more snmp interface ids>]');
 cli.h(longOpt:'help', 'This help menu');
 cli.d(longOpt:'debug', 'Debug output');
+cli.x(longOpt:'export', 'Export (dump) the jrobin data');
 cli.y(longOpt:'year', args:1, argName:'YYYY', 'Year (' + defaultYear + ')'); // default to current year
 cli.m(longOpt:'month', args:1, argName:'M|MM', 'Month (' + defaultMonth + ')'); // default to previous month.
 cli.g(longOpt:'graph', args:1, argName: 'filename', 'Create png graph');
+cli.footer = '\nTo format the exported data, use awk: ./calc95 -x <id1>[, id2, id3] | \\\n awk \'{if ($0 != \"\") print $1,\"\\t\",$(NF-1),\"\\t\",$NF}\'';
 
 def options = cli.parse(args);
 
@@ -84,8 +93,7 @@ if (options.d) {
 	println(endTime);
 }
 
-// YYYY-MM formatted string, used for (optional) filename and prefixed in front of the actual 95pct usage
-String dateText = new SimpleDateFormat("yyyy-MM").format(endTime);
+String dateText = new SimpleDateFormat(dateTextFormat).format(endTime);
 
 def sql = Sql.newInstance("jdbc:postgresql://" + dbhost + ":" +
        dbport + "/" + dbname, dbuser, dbpass, 
@@ -148,7 +156,7 @@ DataProcessor dp = new DataProcessor((int)(startTime.getTime()/1000), (int)(endT
 def rrdDef = new RrdGraphDef();
 
 if (options.g) {
-	if (useSubfolders) {
+	if (useMonthlySubfolders) {
 		pngroot += dateText + '/';
 		filename = pngroot + options.g + ".png";
 	}
@@ -347,4 +355,9 @@ if (options.g) {
 if (options.d) {
 	println("95th percentiles (in : out): " + in95 + " : " + out95 + ". 95pct: " + String.format("%d Mbps", Math.round(max95 / 1000 / 1000)));
 }
-println(dateText + " " + String.format("%d Mbps", Math.round(max95 / 1000 / 1000)));
+if (options.x) {
+	print(dp.dump()); // dump() includes a newline at the end.
+}
+else { // Don't print the summary/total if the user requested a dump.
+	println(dateText + " " + String.format("%d Mbps", Math.round(max95 / 1000 / 1000)));
+}

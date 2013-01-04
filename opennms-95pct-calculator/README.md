@@ -33,6 +33,48 @@ It probably requires slight modifications in order to work with very old
 versions of Groovy (due to the CliBuilder), but has been tested and found to
 be successfully working with Groovy 2.0.1 and OpenNMS 1.9.0
 
+## Groovy environment configuration
+
+You need groovy to be aware of your environment before you can use the script,
+lest you end up with "unable to resolve class" errors.
+
+Groovy seems to prefer '~/.groovy/' as the base directory, but this can be
+changed by creating (or modifying) your own '&lt;groovypath&gt;/bin/startGroovy'-script.
+
+Example '~/.groovy/startup' config:
+<pre>
+JAVA_OPTS=-Dopennms.home="/usr/share/java/"
+GROOVY_CONF=$HOME/.groovy/groovy-starter.conf
+</pre>
+
+Example '~/.groovy/groovy-starter.conf':
+<pre>
+##############################################################################
+##                                                                          ##
+##  Groovy Classloading Configuration                                       ##
+##                                                                          ##
+##############################################################################
+
+##
+## $Revision: 9225 $ $Date: 2007-11-15 21:17:45 +0100 (Do, 15 Nov 2007) $
+##
+## Note: do not add classes from java.lang here. No rt.jar and on some
+##       platforms no tools.jar
+##
+## See http://groovy.codehaus.org/api/org/codehaus/groovy/tools/LoaderConfiguration.html
+## for the file format
+
+    # load required libraries
+    load !{groovy.home}/lib/*.jar
+
+    # load user specific libraries
+    load !{user.home}/.groovy/lib/*.jar
+    
+    # tools.jar for ant tasks
+    load ${tools.jar}
+    load /usr/share/java/opennms/*.jar
+</pre>
+
 ## Usage examples
 
 ### Help menu
@@ -43,6 +85,7 @@ usage: calc95 [options] &lt;snmp interface id&gt; [,&lt;more snmp interface ids&
  -g,--graph &lt;filename&gt;   Create png graph
  -h,--help               This help menu
  -m,--month &lt;M|MM&gt;       Month (defaults to the previous month)
+ -x,--export             Export (dump) the jrobin data
  -y,--year &lt;YYYY&gt;        Year (defaults to the current year)
 </pre>
 
@@ -54,6 +97,22 @@ $ ./calc95 -g multipledemo 4120,5290,5418,23741
 
 In addition to the output above, the following file will be created:
 &lt;pngroot&gt;/2012-07/multipledemo.png
+
+### Dumping the 95pct data to stdout
+<pre>
+$ ./calc95 -x 4120,5290,5418,23741 | /usr/bin/awk '{if ($0 != "") print $1,"\t",$(NF-1),"\t"$NF}'
+timestamp 	 rawbitsIn 	rawbitsOut
+1354316400 	 +2.5860941000E09 	+9.4379481050E07
+1354316700 	 +2.4101028942E09 	+8.5911839185E07
+1354317000 	 +2.4114225887E09 	+8.5771646794E07
+1354317300 	 +2.3229159862E09 	+8.5431023450E07
+(... it continues to dump one line for every interval in the selected period.)
+</pre>
+
+Piping it through the awk command above selects the first and the two last
+columns only, which are the only columns that really matter. The other columns
+contain intermediate data for the calculations made by JRobin, and the
+amount of columns will vary depending on how many interfaces you include.
 
 ### 95pct for switchports + server interfaces + debug output
 
