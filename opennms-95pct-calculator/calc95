@@ -112,7 +112,7 @@ if (options.arguments()) {
 		println(interfaceSQL);
 	}
 	sql.eachRow interfaceSQL, {row-> 
-		def jrbfolder = row.snmpifname.replaceAll('/', '_');
+		def jrbfolder = row.snmpifname.replaceAll('/', '_').replaceAll('\\.', '_');
 		def snmpifname = row.snmpifname;
 		def nodeid = row.nodeid;
 		def nodesysoid = row.nodesysoid;
